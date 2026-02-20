@@ -1,5 +1,5 @@
+from sklearn.neighbors import KNeighborsClassifier
 import cv2
-import face_recognition
 import pickle
 import numpy as np
 import os
@@ -12,77 +12,48 @@ def speak(text):
     Dispatch("SAPI.SpVoice").Speak(text)
 
 video = cv2.VideoCapture(0)
-
-with open('data/encodings.pkl', 'rb') as f:
-    KNOWN_ENCODINGS = pickle.load(f)
+facedetect = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
 
 with open('data/names.pkl', 'rb') as f:
-    KNOWN_NAMES = pickle.load(f)
+    LABELS = pickle.load(f)
+with open('data/faces_data.pkl', 'rb') as f:
+    FACES = pickle.load(f)
+
+knn = KNeighborsClassifier(n_neighbors=5)
+knn.fit(FACES, LABELS)
 
 imgBackground = cv2.imread("background.png")
 COL_NAMES = ['NAME', 'TIME']
 
 while True:
     ret, frame = video.read()
-    if not ret:
-        continue
-
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    face_locations = face_recognition.face_locations(rgb_frame)
-    face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-
-    detected_names = []
-
-    for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-
-        distances = face_recognition.face_distance(KNOWN_ENCODINGS, face_encoding)
-        min_distance = np.min(distances)
-        index = np.argmin(distances)
-
-        if min_distance < 0.5:
-            name = KNOWN_NAMES[index]
-        else:
-            name = "Unknown"
-
-        detected_names.append(name)
-
-        font = cv2.FONT_HERSHEY_COMPLEX
-        font_scale = 0.8
-        thickness = 2
-
-        (text_width, text_height), _ = cv2.getTextSize(name, font, font_scale, thickness)
-
-        box_width = max(right - left, text_width + 20)
-
-        cv2.rectangle(frame, (left, top), (left + box_width, bottom), (50,50,255), 2)
-        cv2.rectangle(frame, (left, top - 40), (left + box_width, top), (50,50,255), -1)
-
-        cv2.putText(frame, name, (left + 10, top - 10),
-                    font, font_scale, (255,255,255), thickness)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = facedetect.detectMultiScale(gray, 1.3, 5)
+    outputs = []
+    for (x, y, w, h) in faces:
+        crop_img = frame[y:y+h, x:x+w]
+        resized_img = cv2.resize(crop_img, (23,25)).flatten().reshape(1,-1)
+        output = knn.predict(resized_img)
+        outputs.append(output[0])
+        cv2.rectangle(frame, (x,y), (x+w,y+h), (50,50,255), 2)
+        cv2.rectangle(frame, (x,y-40), (x+w,y), (50,50,255), -1)
+        cv2.putText(frame, str(output[0]), (x,y-15), cv2.FONT_HERSHEY_COMPLEX, 1, (255,255,255), 1)
 
     imgBackground[162:162 + 480, 55:55 + 640] = frame
     cv2.imshow("Frame", imgBackground)
-
     k = cv2.waitKey(1)
-
     if k == ord('o'):
         ts = time.time()
         date = datetime.fromtimestamp(ts).strftime("%d-%m-%Y")
         timestamp = datetime.fromtimestamp(ts).strftime("%I:%M %p - %d/%m/%Y")
         file_path = "Attendance/Attendance_" + date + ".csv"
         exist = os.path.isfile(file_path)
-
-        for name in detected_names:
-            if name == "Unknown":
-                continue
-
+        for name in outputs:
             attendance = [str(name), timestamp]
-
             if exist:
                 with open(file_path, "r") as csvfile:
                     reader = csv.reader(csvfile)
                     names_list = [row[0] for row in reader if len(row) > 0]
-
                 if str(name) not in names_list:
                     with open(file_path, "a", newline='') as csvfile:
                         writer = csv.writer(csvfile)
@@ -94,7 +65,6 @@ while True:
                     writer.writerow(COL_NAMES)
                     writer.writerow(attendance)
                 speak(f"Attendance Taken for {name}")
-
     if k == ord('q'):
         break
 

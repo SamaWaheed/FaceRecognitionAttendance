@@ -1,49 +1,71 @@
 import cv2
+import face_recognition
 import pickle
 import os
 import numpy as np
+import time
 
-facedetect = cv2.CascadeClassifier('data/haarcascade_frontalface_default.xml')
 video = cv2.VideoCapture(0)
+
 name = input("Enter your name: ")
 
-faces_data_path = 'data/faces_data.pkl'
-names_path = 'data/names.pkl'
-
-if os.path.exists(faces_data_path):
-    with open(faces_data_path, 'rb') as f:
-        faces_data = pickle.load(f)
-    with open(names_path, 'rb') as f:
-        labels = pickle.load(f)
-else:
-    faces_data = []
-    labels = []
-
+encodings = []
 count = 0
-total_images = 25
+max_images = 20
+last_capture_time = 0
+capture_interval = 0.7
 
 while True:
     ret, frame = video.read()
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = facedetect.detectMultiScale(gray, 1.3, 5)
-    for (x, y, w, h) in faces:
-        crop_img = frame[y:y+h, x:x+w]
-        resized_img = cv2.resize(crop_img, (23,25)).flatten()
-        if count < total_images:
-            faces_data.append(resized_img)
-            labels.append(name)
-            count += 1
-            cv2.putText(frame, f"Captured: {count}/{total_images}", (50,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+    if not ret:
+        continue
 
-    cv2.imshow("Add Face", frame)
-    k = cv2.waitKey(1)
-    if k == ord('q') or count >= total_images:
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    faces = face_recognition.face_locations(rgb_frame)
+
+    for face in faces:
+        top, right, bottom, left = face
+        cv2.rectangle(frame, (left, top), (right, bottom), (0,255,0), 2)
+
+        current_time = time.time()
+
+        if count < max_images and (current_time - last_capture_time) > capture_interval:
+            face_encoding = face_recognition.face_encodings(rgb_frame, [face])[0]
+            encodings.append(face_encoding)
+            count += 1
+            last_capture_time = current_time
+
+        cv2.putText(frame, f"{count}/{max_images}", (left, top-10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+
+    cv2.imshow("Capture Faces", frame)
+
+    if cv2.waitKey(1) == ord('q') or count >= max_images:
         break
 
 video.release()
 cv2.destroyAllWindows()
-with open(faces_data_path, 'wb') as f:
-    pickle.dump(np.array(faces_data), f)
-with open(names_path, 'wb') as f:
+
+encodings = np.array(encodings)
+labels = np.array([name]*len(encodings))
+
+enc_file = 'data/encodings.pkl'
+name_file = 'data/names.pkl'
+
+if os.path.exists(enc_file):
+    with open(enc_file, 'rb') as f:
+        old_encodings = pickle.load(f)
+    encodings = np.vstack((old_encodings, encodings))
+
+if os.path.exists(name_file):
+    with open(name_file, 'rb') as f:
+        old_names = pickle.load(f)
+    labels = np.hstack((old_names, labels))
+
+with open(enc_file, 'wb') as f:
+    pickle.dump(encodings, f)
+
+with open(name_file, 'wb') as f:
     pickle.dump(labels, f)
-print(f"{count} face images saved successfully for {name}!")
+
+print(f"Saved {count} face encodings for '{name}' successfully!")
