@@ -6,6 +6,7 @@ A real-time face recognition-based attendance system built using Python, OpenCV,
 
 This project detects and recognizes faces using a webcam and automatically records attendance in a CSV file.
 
+
 The system:
 
 -Detects faces in real-time
@@ -34,13 +35,29 @@ Why the improvement?
 
 -This optimized version provides better balance between speed and accuracy on CPU-based systems.
 
+Versions Included
+
+This repository contains two implementations:
+
+test_knn.py → Initial implementation using KNN for face recognition
+
+test.py → Optimized version using face_distance + threshold matching
+
+The optimized version improves accuracy and reduces misclassification compared to the original KNN approach.
+
 
 **How to Run**
+
 Install dependencies->pip install opencv-python face_recognition numpy
+
 Add a new user->python add_faces.py
+
 Run the system->python test.py
+
 Press:
+
 o → Record attendance
+
 q → Quit
 
 
